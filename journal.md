@@ -22,7 +22,7 @@ As for the power supply, I want to use the Official Pi 4 PSU, which costs about 
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/4dde539182bd4463791afdb773a648cff7126e6c_image.png)
 
-# May 29, 2025, 7 PM: 
+# May 29, 2025, 7 PM: Audio planning (30 minutes)
 Now I'm considering audio options. There's so much out there when it comes to microphones. I'm considering the Samson Go Mic, TONOR TC-777 (USB), and Fifine K669B (USB). Samson Go Mic is the best according to my research, though so I'll go with that for now. As for speakers, I'm trying to decide between the Creative Pebble and an Amazon Basics USB Speaker. I've decided I'm going to use Mycroft AI for the software. It's good for this kind of project and it's open source. 
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/094dcf8b9cb976f8b794619927abb3d7c74b1194_image.png)
