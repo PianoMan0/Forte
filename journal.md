@@ -28,13 +28,23 @@ Now I'm considering audio options. There's so much out there when it comes to mi
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/094dcf8b9cb976f8b794619927abb3d7c74b1194_image.png)
 
-# May 30, 2025, 3 PM: 
+# May 30, 2025, 3 PM:
 I think I'm almost done choosing the hardware. Here's my plan for the essential features:
----
-Raspberry Pi:	Raspberry Pi 4B (4GB) - $55
+
+Raspberry Pi:	Raspberry Pi 4B (4GB) - $60
 Power Supply:	Official Pi 4 PSU	- $10
 Case:	Basic Pi 4B Case - $8
 Microphone:	Samson Go Mic	- $35
 Speaker: Amazon Basics USB - $15
----
+
+This takes me to $128. There's other hardware I want to get to make this the best it can be:
+
+Light Sensor: TSL2561 - $6
+Camera: Raspberry Pi Camera Module - $15
+
+This takes me to $148, just enough for the 6 points! I'll buy any other upgrades with my own money, for instance an LED ring/strip to indicated thinking/listening/responding and more.
+
+![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/f268066b1809ab19e9cad11be2c131afdca85cc6_image.png)
+
+
 
