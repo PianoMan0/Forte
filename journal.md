@@ -39,10 +39,10 @@ Speaker: Amazon Basics USB - $15
 
 This takes me to $128. There's other hardware I want to get to make this the best it can be:
 
-Light Sensor: TSL2561 - $6
-Camera: Raspberry Pi Camera Module - $15
+Light Sensor: TSL2561 - $6 (Used to give light based responses) 
+Camera: Raspberry Pi Camera Module - $15 (I'm really excitrd about this, it will enhance security, and Forte will have eyes!)
 
-This takes me to $148, just enough for the 6 points! I'll buy any other upgrades with my own money, for instance an LED ring/strip to indicated thinking/listening/responding and more.
+This takes me to $148, just enough for the 6 points! I'll buy any other upgrades with my own money, for instance an LED ring/strip to indicated thinking/listening/responding and more. Tomorrow I'm planning to start on some software for this project.
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/f268066b1809ab19e9cad11be2c131afdca85cc6_image.png)
 
