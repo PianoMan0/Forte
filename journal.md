@@ -28,7 +28,7 @@ Now I'm considering audio options. There's so much out there when it comes to mi
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/094dcf8b9cb976f8b794619927abb3d7c74b1194_image.png)
 
-# May 30, 2025, 3 PM:
+# May 30, 2025, 4 PM (2 hours):
 I think I'm almost done choosing the hardware. Here's my plan for the essential features:
 
 Raspberry Pi:	Raspberry Pi 4B (4GB) - $60
