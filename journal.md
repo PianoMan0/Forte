@@ -46,5 +46,14 @@ This takes me to $148, just enough for the 6 points! I'll buy any other upgrades
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/f268066b1809ab19e9cad11be2c131afdca85cc6_image.png)
 
+# May 31, 2025:
+I've decided to design my own custom case, and reduce my hardware budget. Here's my new plan:
 
+Raspberry Pi:	Raspberry Pi Zero W - $20
+Power Supply:	Official Pi 4 PSU	- $10
+Case:	Custom - Price TBD
+Microphone:	Fifine K668 USB Microphone 
+Speaker: Amazon Basics USB - $15
+
+I'm going to use TinkerCad to design the case.
 
