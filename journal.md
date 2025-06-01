@@ -28,7 +28,7 @@ Now I'm considering audio options. There's so much out there when it comes to mi
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/094dcf8b9cb976f8b794619927abb3d7c74b1194_image.png)
 
-# May 30, 2025, 4 PM (2 hours):
+# May 30, 2025, 4 PM: Specifics (2 hours)
 I think I'm almost done choosing the hardware. Here's my plan for the essential features:
 
 Raspberry Pi:	Raspberry Pi 4B (4GB) - $60
@@ -46,14 +46,16 @@ This takes me to $148, just enough for the 6 points! I'll buy any other upgrades
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/f268066b1809ab19e9cad11be2c131afdca85cc6_image.png)
 
-# May 31, 2025:
+# May 31, 2025: Budget/Case planning (1 hour)
 I've decided to design my own custom case, and reduce my hardware budget. Here's my new plan:
 
 Raspberry Pi:	Raspberry Pi Zero W - $20
 Power Supply:	Official Pi 4 PSU	- $10
 Case:	Custom - Price TBD
-Microphone:	Fifine K668 USB Microphone 
+Microphone:	Fifine K668 USB Microphone - $20
 Speaker: Amazon Basics USB - $15
+Light Sensor: TSL2561 - $6
+Camera: Raspberry Pi Camera Module - $15
 
-I'm going to use TinkerCad to design the case.
+I reduced my budget by about $50, so this will be a $100 project. I'm going to use TinkerCad to design the case, which I'll hopefully get started on tomorrow, along with software, which I didn't get to today.
 
