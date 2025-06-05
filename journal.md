@@ -61,3 +61,8 @@ I reduced my budget by about $50, so this will be a $100 project. I'm going to u
 
 # June 4, 2025: Learning Leon (30 minutes)
 Leon is what I'm using to make this, and today I spent half an hour learning about it. I've decided I'm going to use Python with Leon, because it's easier for me than the alternative: Javascript (And I made a YSWS about JS *sob*). It seems easy to hardcode commands with it, but what I really want is AI functionality built in. No matter what I use, I have to install a lot of things on my computer, and because I'm moving to a different one soon I'm trying to hold off on that.
+
+# June 5, 2025: Working on case (1.5 hours)
+Worked on designing most of the case for this project in TinkerCad. I have the whole main case and I also have space where the camera, microphone, and light sensor will go. I learned a ton today, because I had only a little TinkerCad experience before!
+
+![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/60a98ccc32fe8ec83046d8f5a27de4f49778ba39_image.png)
