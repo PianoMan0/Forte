@@ -59,3 +59,5 @@ Camera: Raspberry Pi Camera Module - $15
 
 I reduced my budget by about $50, so this will be a $100 project. I'm going to use TinkerCad to design the case, which I'll hopefully get started on tomorrow, along with software, which I didn't get to today.
 
+# June 4, 2025: Learning Leon (30 minutes)
+Leon is what I'm using to make this, and today I spent half an hour learning about it. I've decided I'm going to use Python with Leon, because it's easier for me than the alternative: Javascript (And I made a YSWS about JS *sob*). It seems easy to hardcode commands with it, but what I really want is AI functionality built in. No matter what I use, I have to install a lot of things on my computer, and because I'm moving to a different one soon I'm trying to hold off on that.
