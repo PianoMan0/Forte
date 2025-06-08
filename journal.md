@@ -51,13 +51,14 @@ I've decided to design my own custom case, and reduce my hardware budget. Here's
 
 Raspberry Pi:	Raspberry Pi Zero W - $20
 Power Supply:	Official Pi 4 PSU	- $10
-Case:	Custom - Price TBD
+Case:	Custom - Paid for by me
 Microphone:	Fifine K668 USB Microphone - $20
 Speaker: Amazon Basics USB - $15
 Light Sensor: TSL2561 - $6
 Camera: Raspberry Pi Camera Module - $15
+MicroSD Card: Hack Club MicroSD Card - Already have
 
-I reduced my budget by about $50, so this will be a $100 project. I'm going to use TinkerCad to design the case, which I'll hopefully get started on tomorrow, along with software, which I didn't get to today.
+I reduced my budget by about $64, so this will be an $86 project. I'm going to use TinkerCad to design the case, which I'll hopefully get started on tomorrow, along with software, which I didn't get to today.
 
 # June 4, 2025: Learning Leon (30 minutes)
 Leon is what I'm using to make this, and today I spent half an hour learning about it. I've decided I'm going to use Python with Leon, because it's easier for me than the alternative: Javascript (And I made a YSWS about JS *sob*). It seems easy to hardcode commands with it, but what I really want is AI functionality built in. No matter what I use, I have to install a lot of things on my computer, and because I'm moving to a different one soon I'm trying to hold off on that.
@@ -66,3 +67,8 @@ Leon is what I'm using to make this, and today I spent half an hour learning abo
 Worked on designing most of the case for this project in TinkerCad. I have the whole main case and I also have space where the camera, microphone, and light sensor will go. I learned a ton today, because I had only a little TinkerCad experience before!
 
 ![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/60a98ccc32fe8ec83046d8f5a27de4f49778ba39_image.png)
+
+# June 8, 2025: Finished case (20 minutes)
+Finished designing the case! I will need a soldering iron for this project, but thankfully I already have one. My library offers free 3D printing, so I will utilize that. 
+
+![Image](https://hc-cdn.hel1.your-objectstorage.com/s/v3/8e754d44218e3f65270da2cb99be0316839e92f2_image.png)
