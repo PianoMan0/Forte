@@ -1,3 +1,6 @@
+import argparse
+import ast
+import operator as op
 import threading
 import speech_recognition as sr
 from typing import List, Optional
@@ -5,6 +8,7 @@ import pyttsx3
 import time
 import random
 import wikipedia
+import logging
 
 class JokeGenerator:
     def __init__(self):
@@ -30,13 +34,20 @@ class FactGenerator:
 
 class ReminderManager:
     def __init__(self):
-        self.reminders = []
+        self.reminders = []  # list of tuples (timestamp, message)
         self.lock = threading.Lock()
 
     def add_reminder(self, duration: int, message: str):
         with self.lock:
-            self.reminders.append((duration, message))
+            fire_at = time.time() + duration * 60
+            self.reminders.append((fire_at, message))
         threading.Thread(target=self.remind, args=(duration, message), daemon=True).start()
+
+    def list_reminders(self) -> List[str]:
+        now = time.time()
+        with self.lock:
+            items = [f"in {int((fire_at-now)//60)}m: {msg}" if fire_at>now else f"due: {msg}" for fire_at, msg in self.reminders]
+        return items
 
     def remind(self, duration: int, message: str):
         time.sleep(duration * 60)
@@ -48,8 +59,13 @@ class SpeechAssistant:
         self.joke_generator = JokeGenerator()
         self.fact_generator = FactGenerator()
         self.reminder_manager = ReminderManager()
+        self.enable_tts = True
+        self.logger = logging.getLogger("Forte")
 
     def speak(self, text: str) -> None:
+        if not self.enable_tts:
+            self.logger.info("TTS disabled, would say: %s", text)
+            return
         self.engine.say(text)
         self.engine.runAndWait()
 
@@ -70,26 +86,52 @@ class SpeechAssistant:
 
     def calculate(self, expression: str) -> str:
         try:
+            # extract math expression
             math_text = expression.lower().replace("calculate", "").strip()
             math_text = (
                 math_text.replace("plus", "+")
                 .replace("minus", "-")
                 .replace("times", "*")
+                .replace("x", "*")
                 .replace("divided by", "/")
             )
-            result = str(eval(math_text))
+
+            def safe_eval(expr: str):
+                # supported operators
+                operators = {
+                    ast.Add: op.add,
+                    ast.Sub: op.sub,
+                    ast.Mult: op.mul,
+                    ast.Div: op.truediv,
+                    ast.Pow: op.pow,
+                    ast.USub: op.neg,
+                }
+
+                def _eval(node):
+                    if isinstance(node, ast.Num):
+                        return node.n
+                    if isinstance(node, ast.BinOp):
+                        return operators[type(node.op)](_eval(node.left), _eval(node.right))
+                    if isinstance(node, ast.UnaryOp):
+                        return operators[type(node.op)](_eval(node.operand))
+                    raise ValueError("Unsupported expression")
+
+                node = ast.parse(expr, mode="eval").body
+                return _eval(node)
+
+            result = str(safe_eval(math_text))
             return result
         except Exception as e:
-            self.speak(f"Error: {str(e)}")
+            self.logger.exception("Calculation error")
             return "Sorry, I couldn't perform that calculation."
 
     def search_wikipedia(self, query: str) -> str:
         try:
             result = wikipedia.summary(query, sentences=2)
             self.speak(result)
-            return "Wikipedia results retrieved."
+            return result
         except Exception as e:
-            self.speak(f"Error: {str(e)}")
+            self.logger.exception("Wikipedia search failed")
             return "Sorry, I couldn't find anything on Wikipedia."
 
     def set_reminder(self, duration: int, message: str) -> None:
@@ -100,12 +142,23 @@ class SpeechAssistant:
 
         text_lower = text.lower()
 
+        if text_lower.strip() == "help":
+            cmds = [
+                "hello/hi", "how are you", "time", "calculate <expr>",
+                "tell me a joke", "tell me a fact", "remind me in <n> minutes to <task>",
+                "list reminders", "search wikipedia for <query>", "goodbye"
+            ]
+            self.speak("Available commands: " + ", ".join(cmds))
+            return
+
         if any(word in text_lower for word in ["hello", "hi", "hey", "sup", "greetings"]):
             self.speak("Hello!")
         elif "how are you" in text_lower:
             self.speak("I'm doing well, thank you for asking!")
         elif "meow" in text_lower:
             self.speak("Are you a cat? What the sigma, I like cats.")
+        elif "what is your name" in text_lower:
+            self.speak("I am Forte")
         elif "thanks" in text_lower:
             self.speak("You're welcome!")
         elif "goodbye" in text_lower:
@@ -135,6 +188,13 @@ class SpeechAssistant:
                     self.speak("Sorry, I couldn't understand that reminder command.")
             except Exception:
                 self.speak("Sorry, I couldn't understand that reminder command.")
+        elif "list reminders" in text_lower:
+            items = self.reminder_manager.list_reminders()
+            if not items:
+                self.speak("You have no reminders.")
+            else:
+                for it in items:
+                    self.speak(it)
         elif "search wikipedia" in text_lower:
             # Example: "search wikipedia for Python programming"
             if "for" in text_lower:
@@ -146,7 +206,16 @@ class SpeechAssistant:
             self.speak("Sorry, I didn't understand that command.")
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Forte - a small speech assistant")
+    parser.add_argument("--text", action="store_true", help="Run in text/CLI mode (no microphone listening)")
+    parser.add_argument("--no-tts", action="store_true", help="Disable text-to-speech output")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
     assistant = SpeechAssistant()
+    if args.no_tts:
+        assistant.enable_tts = False
 
     def listen_and_process():
         while True:
@@ -154,14 +223,25 @@ def main() -> None:
             if text:
                 assistant.process_command(text)
 
-    threading.Thread(target=listen_and_process, daemon=True).start()
-
-    # Keep the main thread alive
     try:
-        while True:
-            time.sleep(1)
+        if args.text:
+            assistant.speak("Running in text mode. Type 'exit' to quit. Type 'help' for commands.")
+            while True:
+                text = input("> ")
+                if not text:
+                    continue
+                if text.strip().lower() in ("exit", "quit", "goodbye"):
+                    assistant.speak("Goodbye!")
+                    break
+                assistant.process_command(text)
+        else:
+            threading.Thread(target=listen_and_process, daemon=True).start()
+            # Keep the main thread alive
+            while True:
+                time.sleep(1)
     except KeyboardInterrupt:
-        print("Exiting...")
+        logging.info("Exiting...")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
