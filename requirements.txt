@@ -1,5 +1,6 @@
-openrouter
-SpeechRecognition
+﻿SpeechRecognition
 pyttsx3
 wikipedia
 pyaudio
+requests
+googletrans==4.0.0-rc1
