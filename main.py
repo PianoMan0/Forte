@@ -9,6 +9,16 @@ import time
 import random
 import wikipedia
 import logging
+import os
+import sys
+
+# Optional OpenRouter client (used for AI fallback)
+try:
+    from openrouter import OpenRouter
+    OPENROUTER_AVAILABLE = True
+except Exception:
+    OpenRouter = None
+    OPENROUTER_AVAILABLE = False
 
 class JokeGenerator:
     def __init__(self):
@@ -61,6 +71,21 @@ class SpeechAssistant:
         self.reminder_manager = ReminderManager()
         self.enable_tts = True
         self.logger = logging.getLogger("Forte")
+        self.openrouter_client = None
+        # Initialize OpenRouter client if API key provided in env
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        server_url = os.environ.get("OPENROUTER_URL", "https://ai.hackclub.com/proxy/v1")
+        model = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3-32b")
+        self._openrouter_model = model
+        if api_key and OPENROUTER_AVAILABLE:
+            try:
+                self.openrouter_client = OpenRouter(api_key=api_key, server_url=server_url)
+                self.logger.info("OpenRouter client initialized using model %s", self._openrouter_model)
+            except Exception:
+                self.logger.exception("Failed to initialize OpenRouter client")
+                self.openrouter_client = None
+        elif api_key and not OPENROUTER_AVAILABLE:
+            self.logger.warning("OPENROUTER_API_KEY is set but `openrouter` package is not installed")
 
     def speak(self, text: str) -> None:
         if not self.enable_tts:
@@ -134,6 +159,29 @@ class SpeechAssistant:
             self.logger.exception("Wikipedia search failed")
             return "Sorry, I couldn't find anything on Wikipedia."
 
+    def ai_query(self, prompt: str) -> str:
+        """Send prompt to OpenRouter and return assistant response, or an error message."""
+        if not self.openrouter_client:
+            return "AI not configured. Set OPENROUTER_API_KEY and install the openrouter package to enable AI responses."
+        try:
+            response = self.openrouter_client.chat.send(
+                model=self._openrouter_model,
+                messages=[{"role": "user", "content": prompt}],
+                stream=False,
+            )
+            # Support different response shapes defensively
+            try:
+                return response.choices[0].message.content
+            except Exception:
+                # Fallback: try .choices[0].text
+                try:
+                    return response.choices[0].text
+                except Exception:
+                    return str(response)
+        except Exception:
+            self.logger.exception("OpenRouter query failed")
+            return "Sorry, the AI request failed."
+
     def set_reminder(self, duration: int, message: str) -> None:
         self.reminder_manager.add_reminder(duration, message)
 
@@ -159,6 +207,8 @@ class SpeechAssistant:
             self.speak("Are you a cat? What the sigma, I like cats.")
         elif "what is your name" in text_lower:
             self.speak("I am Forte")
+        elif "who are you" in text_lower:
+            self.speak("I am Forte")    
         elif "thanks" in text_lower:
             self.speak("You're welcome!")
         elif "goodbye" in text_lower:
@@ -203,7 +253,12 @@ class SpeechAssistant:
                 query = text_lower.replace("search wikipedia", "").strip()
             self.search_wikipedia(query)
         else:
-            self.speak("Sorry, I didn't understand that command.")
+            # Fallback: if AI configured, ask model to handle arbitrary queries
+            ai_resp = self.ai_query(text)
+            if ai_resp:
+                self.speak(ai_resp)
+            else:
+                self.speak("Sorry, I didn't understand that command.")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Forte - a small speech assistant")

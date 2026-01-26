@@ -1,0 +1,5 @@
+openrouter
+SpeechRecognition
+pyttsx3
+wikipedia
+pyaudio
