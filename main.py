@@ -330,7 +330,7 @@ class SpeechAssistant:
     def define_word(self, word: str) -> str:
         try:
             url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
-            r = requests.get(url, timeout=10)
+            r = requests.get(url, timeout=20)
             r.raise_for_status()
             data = r.json()
             meanings = data[0].get("meanings", [])
@@ -380,6 +380,18 @@ class SpeechAssistant:
             self.speak("I am Forte")
         elif "thanks" in text_lower:
             self.speak("You're welcome!")
+        elif "six seven" in text_lower:
+            self.speak("Six seven!")
+        elif "will you be my friend" in text_lower:
+            self.speak("Of course!")
+        elif "want to be friends" in text_lower:
+            self.speak("Of course!")
+        elif "who created you" in text_lower:
+            self.speak("Joel Gallagher created me!")
+        elif "who made you" in text_lower:
+            self.speak("Joel Gallagher made me!")
+        elif "what can you do" in text_lower:
+            self.speak("I can do a lot of things! Try asking me to tell a joke, a fun fact, calculate something, search wikipedia, and more! If I can't do something yet, nag my creator until he programs me to be able to do it!")  
         elif "goodbye" in text_lower:
             self.speak("Goodbye! Have a great day!")
             return
@@ -393,6 +405,7 @@ class SpeechAssistant:
             self.speak(self.joke_generator.get_random_joke())
         elif "tell me a fact" in text_lower:
             self.speak(self.fact_generator.get_random_fact())
+        
         elif "remind me" in text_lower:
             try:
                 match = re.search(r"remind me in (\d+) minute[s]? to (.+)", text_lower)
