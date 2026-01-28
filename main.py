@@ -11,6 +11,9 @@ import wikipedia
 import logging
 import os
 import sys
+import subprocess
+import shutil
+import xml.etree.ElementTree as ET
 import requests
 import json
 import re
@@ -77,6 +80,13 @@ class SpeechAssistant:
         # Default coordinates (user requested):
         self.default_lat = 39.6374
         self.default_lon = -75.6001
+        # Safety flags -- default to unsafe actions disabled
+        self.allow_apps = False
+        self.allow_volume = False
+        # Limits to avoid resource exhaustion
+        self.max_timers = 5
+        self._timer_count = 0
+        self._timer_lock = threading.Lock()
         # Notes storage
         self.notes_file = os.path.join(os.path.dirname(__file__), "notes.json")
         try:
@@ -87,6 +97,11 @@ class SpeechAssistant:
             self.logger.exception("Failed to initialize notes file")
 
     def speak(self, text: str) -> None:
+        # one-second delay before every assistant response
+        try:
+            time.sleep(1)
+        except Exception:
+            pass
         if not self.enable_tts:
             self.logger.info("TTS disabled, would say: %s", text)
             return
@@ -212,6 +227,13 @@ class SpeechAssistant:
             return "Sorry, I couldn't fetch the weather."
 
     def set_timer(self, seconds: int, message: str = "Timer complete") -> None:
+        # Prevent too many timers from being created
+        with self._timer_lock:
+            if self._timer_count >= self.max_timers:
+                self.speak("Too many timers running; please wait before adding another.")
+                return
+            self._timer_count += 1
+
         def _timer():
             try:
                 time.sleep(seconds)
@@ -220,8 +242,130 @@ class SpeechAssistant:
                 self.speak(text)
             except Exception:
                 self.logger.exception("Timer failed")
+            finally:
+                with self._timer_lock:
+                    self._timer_count = max(0, self._timer_count - 1)
 
         threading.Thread(target=_timer, daemon=True).start()
+
+    # Volume control (Windows - uses pycaw if available)
+    def set_volume(self, percent: int) -> str:
+        if not self.allow_volume:
+            return "Volume control is disabled. Run with --allow-volume to enable."
+        try:
+            if not sys.platform.startswith("win"):
+                return "Volume control is only supported on Windows."
+            if percent < 0 or percent > 100:
+                return "Please provide a volume between 0 and 100."
+            # Try pycaw (preferred)
+            try:
+                from ctypes import cast, POINTER
+                from comtypes import CLSCTX_ALL
+                from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+                speakers = AudioUtilities.GetSpeakers()
+                interface = speakers.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                volume = cast(interface, POINTER(IAudioEndpointVolume))
+                volume.SetMasterVolumeLevelScalar(percent / 100.0, None)
+                msg = f"Volume set to {percent}%"
+                self.speak(msg)
+                return msg
+            except Exception:
+                self.logger.debug("pycaw not available or failed; volume control not performed")
+                return "Volume control is not available (pycaw/comtypes not installed)."
+        except Exception:
+            self.logger.exception("Failed to set volume")
+            return "Sorry, I couldn't change the volume."
+
+    def get_volume(self) -> str:
+        if not self.allow_volume:
+            return "Volume control is disabled. Run with --allow-volume to enable."
+        try:
+            if not sys.platform.startswith("win"):
+                return "Volume info is only supported on Windows."
+            try:
+                from ctypes import cast, POINTER
+                from comtypes import CLSCTX_ALL
+                from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+                speakers = AudioUtilities.GetSpeakers()
+                interface = speakers.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                volume = cast(interface, POINTER(IAudioEndpointVolume))
+                val = volume.GetMasterVolumeLevelScalar()
+                pct = int(round(val * 100))
+                msg = f"Current volume is {pct}%"
+                self.speak(msg)
+                return msg
+            except Exception:
+                self.logger.debug("pycaw not available; cannot read volume")
+                return "Volume information not available (pycaw/comtypes not installed)."
+        except Exception:
+            self.logger.exception("Failed to get volume")
+            return "Sorry, I couldn't read the volume."
+
+    def open_app(self, app_name: str) -> str:
+        if not self.allow_apps:
+            return "Opening applications is disabled. Run with --allow-apps to enable."
+        try:
+            name = app_name.strip().lower()
+            # Apps
+            mapping = {
+                "notepad": "notepad.exe",
+                "edge": "msedge",
+            }
+            cmd = mapping.get(name, name)
+            # If it's a known exe, try to launch via which or startfile
+            found = shutil.which(cmd)
+            if found:
+                subprocess.Popen([found], shell=False)
+                msg = f"Opening {app_name}"
+                self.speak(msg)
+                return msg
+            # try startfile (works for registered protocols/paths)
+            try:
+                os.startfile(cmd)
+                msg = f"Opening {app_name}"
+                self.speak(msg)
+                return msg
+            except Exception:
+                # fallback: try to run directly (may work for commands in PATH)
+                try:
+                    subprocess.Popen([cmd], shell=True)
+                    msg = f"Opening {app_name}"
+                    self.speak(msg)
+                    return msg
+                except Exception:
+                    self.logger.exception("Failed to open app %s", app_name)
+                    return f"I couldn't open {app_name}."
+        except Exception:
+            self.logger.exception("open_app failed")
+            return "Sorry, I couldn't open that application."
+
+    def get_latest_news(self, source: str = "google") -> str:
+        try:
+            # Use Google News RSS as default (no API key required)
+            if source == "google":
+                url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+            else:
+                url = "http://feeds.bbci.co.uk/news/rss.xml"
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            root = ET.fromstring(r.content)
+            items = root.findall('.//item')[:5]
+            headlines = []
+            for it in items:
+                title = it.find('title').text if it.find('title') is not None else None
+                link = it.find('link').text if it.find('link') is not None else None
+                if title:
+                    headlines.append((title, link))
+            if not headlines:
+                return "No news items found."
+            # speak headlines
+            self.speak("Here are the top headlines:")
+            for title, link in headlines:
+                self.speak(title)
+            return "; ".join([h[0] for h in headlines])
+        except Exception:
+            self.logger.exception("News fetch failed")
+            return "Sorry, I couldn't fetch the latest news."
 
     def convert_currency(self, amount: float, from_curr: str, to_curr: str) -> str:
         try:
@@ -354,7 +498,7 @@ class SpeechAssistant:
         self.reminder_manager.add_reminder(duration, message)
 
     def process_command(self, text: str) -> None:
-        print(f"User said: {text}")
+        print(f"User: {text}")
         text_lower = text.lower()
 
         if text_lower.strip() == "help":
@@ -405,7 +549,6 @@ class SpeechAssistant:
             self.speak(self.joke_generator.get_random_joke())
         elif "tell me a fact" in text_lower:
             self.speak(self.fact_generator.get_random_fact())
-        
         elif "remind me" in text_lower:
             try:
                 match = re.search(r"remind me in (\d+) minute[s]? to (.+)", text_lower)
@@ -516,10 +659,16 @@ class SpeechAssistant:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Forte - a small speech assistant")
     parser.add_argument("--text", action="store_true", help="Run in text/CLI mode (no microphone listening)")
+    parser.add_argument("--listen", action="store_true", help="Enable microphone listening mode")
+    parser.add_argument("--allow-apps", action="store_true", help="Allow the assistant to open applications (opt-in)")
+    parser.add_argument("--allow-volume", action="store_true", help="Allow the assistant to change system volume (opt-in)")
     parser.add_argument("--no-tts", action="store_true", help="Disable text-to-speech output")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     assistant = SpeechAssistant()
+    # apply explicit safety opt-ins
+    assistant.allow_apps = bool(getattr(args, "allow_apps", False))
+    assistant.allow_volume = bool(getattr(args, "allow_volume", False))
     if args.no_tts:
         assistant.enable_tts = False
 
@@ -530,7 +679,14 @@ def main() -> None:
                 assistant.process_command(text)
 
     try:
-        if args.text:
+        # Only enable microphone listening if explicitly requested via --listen
+        if args.listen:
+            threading.Thread(target=listen_and_process, daemon=True).start()
+            assistant.speak("Microphone listening enabled. Say 'help' for commands.")
+            while True:
+                time.sleep(1)
+        else:
+            # Default to text/CLI mode unless --listen is provided
             assistant.speak("Running in text mode. Type 'exit' to quit. Type 'help' for commands.")
             while True:
                 text = input("> ")
@@ -540,10 +696,6 @@ def main() -> None:
                     assistant.speak("Goodbye!")
                     break
                 assistant.process_command(text)
-        else:
-            threading.Thread(target=listen_and_process, daemon=True).start()
-            while True:
-                time.sleep(1)
     except KeyboardInterrupt:
         logging.info("Exiting...")
         sys.exit(0)
