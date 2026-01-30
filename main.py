@@ -25,14 +25,28 @@ except Exception:
 
 class JokeGenerator:
     def __init__(self):
-        self.jokes = [
-            "Why don't programmers like nature? It has too many bugs.",
-            "Why don't Python programmers like to play hide and seek? Because good luck hiding when they can just import os and find you.",
-            "I've heard AI is going to take over the world. Just what I need, more work."
-        ]
+        # support categories for more interesting jokes
+        self.jokes = {
+            "general": [
+                "Why don't programmers like nature? It has too many bugs.",
+                "I've heard AI is going to take over the world. Just what I need, more work."
+            ],
+            "python": [
+                "Why don't Python programmers like to play hide and seek? Because good luck hiding when they can just import os and find you.",
+                "I told my Python program a joke. It didn't laugh because it couldn't find the 'humor' module."
+            ],
+        }
 
-    def get_random_joke(self) -> str:
-        return random.choice(self.jokes)
+    def get_random_joke(self, category: Optional[str] = None) -> str:
+        if category:
+            cat = category.lower()
+            if cat in self.jokes and self.jokes[cat]:
+                return random.choice(self.jokes[cat])
+            # fallback to general
+            return random.choice(self.jokes.get("general", ["I have no jokes right now."]))
+        # pick from all jokes
+        all_j = sum(self.jokes.values(), [])
+        return random.choice(all_j) if all_j else "I have no jokes right now."
 
 
 class FactGenerator:
@@ -77,18 +91,32 @@ class SpeechAssistant:
         self.reminder_manager = ReminderManager()
         self.enable_tts = True
         self.logger = logging.getLogger("Forte")
+        # speaking flag to avoid re-capturing TTS audio
+        self._speaking = threading.Event()
+        # conversation context
+        self.last_user_message: Optional[str] = None
+        self.last_response: Optional[str] = None
+        self.conversation_history: List[str] = []
         # Default coordinates (user requested):
         self.default_lat = 39.6374
         self.default_lon = -75.6001
         # Safety flags -- default to unsafe actions disabled
         self.allow_apps = False
         self.allow_volume = False
+        # simple alias mapping for common short phrases
+        self.aliases = {
+            "hi": "hello",
+            "hey": "hello",
+            "what's your name": "what is your name",
+            "whats your name": "what is your name",
+        }
         # Limits to avoid resource exhaustion
         self.max_timers = 5
         self._timer_count = 0
         self._timer_lock = threading.Lock()
         # Notes storage
         self.notes_file = os.path.join(os.path.dirname(__file__), "notes.json")
+        self.conversation_log = os.path.join(os.path.dirname(__file__), "conversation.log")
         try:
             if not os.path.exists(self.notes_file):
                 with open(self.notes_file, "w", encoding="utf-8") as f:
@@ -102,21 +130,49 @@ class SpeechAssistant:
             time.sleep(1)
         except Exception:
             pass
+        # Always record the last response and history so text-mode still works
+        self.last_response = text
+        self.conversation_history.append(f"Assistant: {text}")
+        try:
+            with open(self.conversation_log, "a", encoding="utf-8") as cf:
+                cf.write(f"Assistant: {text}\n")
+        except Exception:
+            self.logger.debug("Failed to write conversation log")
+
         if not self.enable_tts:
-            self.logger.info("TTS disabled, would say: %s", text)
+            # In non-TTS/text mode, print to stdout so the user sees responses
+            try:
+                print(f"Assistant: {text}")
+            except Exception:
+                # fallback to logger if stdout is unavailable
+                self.logger.info("TTS disabled, would say: %s", text)
             return
-        self.engine.say(text)
-        self.engine.runAndWait()
+
+        try:
+            self._speaking.set()
+            self.engine.say(text)
+            self.engine.runAndWait()
+        finally:
+            # give a short buffer to ensure microphone doesn't pick up the TTS
+            time.sleep(0.25)
+            self._speaking.clear()
 
     def listen(self) -> Optional[str]:
         recognizer = sr.Recognizer()
         with sr.Microphone() as source:
+            # wait if we're speaking to avoid feedback
+            while self._speaking.is_set():
+                time.sleep(0.05)
             print("Listening...")
             try:
-                audio = recognizer.listen(source)
+                # set some reasonable timeouts so we don't hang forever
+                audio = recognizer.listen(source, timeout=6, phrase_time_limit=12)
                 text = recognizer.recognize_google(audio, language='en-US')
                 return text
+            except sr.WaitTimeoutError:
+                return None
             except sr.UnknownValueError:
+                # be concise; avoid speaking over background noise
                 self.speak("Sorry, I didn't catch that.")
                 return None
             except sr.RequestError as e:
@@ -498,8 +554,16 @@ class SpeechAssistant:
         self.reminder_manager.add_reminder(duration, message)
 
     def process_command(self, text: str) -> None:
+        if not text:
+            return False
         print(f"User: {text}")
+        self.last_user_message = text
+        self.conversation_history.append(f"User: {text}")
         text_lower = text.lower()
+        # apply simple alias normalization
+        norm = text_lower.strip()
+        if norm in self.aliases:
+            text_lower = self.aliases[norm]
 
         if text_lower.strip() == "help":
             cmds = [
@@ -512,7 +576,7 @@ class SpeechAssistant:
                 "goodbye"
             ]
             self.speak("Available commands: " + ", ".join(cmds))
-            return
+            return False
 
         if any(word in text_lower for word in ["hello", "hi", "hey", "sup", "greetings"]):
             self.speak("Hello!")
@@ -538,15 +602,27 @@ class SpeechAssistant:
             self.speak("I can do a lot of things! Try asking me to tell a joke, a fun fact, calculate something, search wikipedia, and more! If I can't do something yet, nag my creator until he programs me to be able to do it!")  
         elif "goodbye" in text_lower:
             self.speak("Goodbye! Have a great day!")
-            return
+            return True
         elif "time" in text_lower:
             current_time = time.strftime("%I:%M %p").lstrip("0")
             self.speak(f"The time is {current_time}")
         elif "calculate" in text_lower:
             result = self.calculate(text)
             self.speak(result)
-        elif "tell me a joke" in text_lower:
-            self.speak(self.joke_generator.get_random_joke())
+        elif "tell me a joke" in text_lower or "joke" == text_lower.strip():
+            # support "tell me a joke about python" or "tell me a python joke"
+            m = re.search(r"joke(?: about)?\s+([A-Za-z]+)", text_lower)
+            if m:
+                cat = m.group(1)
+                self.speak(self.joke_generator.get_random_joke(category=cat))
+            else:
+                # check patterns like 'tell me a python joke'
+                m2 = re.search(r"tell me a\s+([A-Za-z]+)\s+joke", text_lower)
+                if m2:
+                    cat = m2.group(1)
+                    self.speak(self.joke_generator.get_random_joke(category=cat))
+                else:
+                    self.speak(self.joke_generator.get_random_joke())
         elif "tell me a fact" in text_lower:
             self.speak(self.fact_generator.get_random_fact())
         elif "remind me" in text_lower:
@@ -595,6 +671,13 @@ class SpeechAssistant:
                 self.speak(f"Timer set for {val} {unit}.")
             else:
                 self.speak("Please specify a duration like 'set timer for 10 seconds'.")
+        elif text_lower.strip() in ("repeat", "say that again", "what did you say"):
+            if self.last_response:
+                self.speak(self.last_response)
+            else:
+                self.speak("I don't have anything to repeat.")
+        elif "another joke" in text_lower or "more jokes" in text_lower:
+            self.speak(self.joke_generator.get_random_joke())
         elif text_lower.startswith("convert") or (" to " in text_lower and any(c.isdigit() for c in text_lower)):
             m = re.search(r"(\d+(?:\.\d+)?)\s*([A-Za-z]{3})\s+to\s+([A-Za-z]{3})", text)
             if not m:
@@ -654,6 +737,7 @@ class SpeechAssistant:
                 self.speak("Please say 'define <word>'.")
         else:
             self.speak("Sorry, I didn't understand that command.")
+        return False
 
 
 def main() -> None:
@@ -676,17 +760,17 @@ def main() -> None:
         while True:
             text = assistant.listen()
             if text:
-                assistant.process_command(text)
+                should_exit = assistant.process_command(text)
+                if should_exit:
+                    break
 
     try:
-        # Only enable microphone listening if explicitly requested via --listen
-        if args.listen:
-            threading.Thread(target=listen_and_process, daemon=True).start()
+        # Default to microphone listening unless --text is provided
+        if not args.text:
             assistant.speak("Microphone listening enabled. Say 'help' for commands.")
-            while True:
-                time.sleep(1)
+            # run in main thread so TTS/speaking syncs with listening
+            listen_and_process()
         else:
-            # Default to text/CLI mode unless --listen is provided
             assistant.speak("Running in text mode. Type 'exit' to quit. Type 'help' for commands.")
             while True:
                 text = input("> ")
