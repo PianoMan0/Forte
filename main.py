@@ -97,7 +97,7 @@ class SpeechAssistant:
         self.last_user_message: Optional[str] = None
         self.last_response: Optional[str] = None
         self.conversation_history: List[str] = []
-        # Default coordinates (user requested):
+        # Default coordinates:
         self.default_lat = 39.6374
         self.default_lon = -75.6001
         # Safety flags -- default to unsafe actions disabled
@@ -767,7 +767,7 @@ def main() -> None:
     try:
         # Default to microphone listening unless --text is provided
         if not args.text:
-            assistant.speak("Microphone listening enabled. Say 'help' for commands.")
+            assistant.speak("Hello! Say 'help' for commands.")
             # run in main thread so TTS/speaking syncs with listening
             listen_and_process()
         else:
