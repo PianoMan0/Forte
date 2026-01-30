@@ -85,7 +85,27 @@ class ReminderManager:
 
 class SpeechAssistant:
     def __init__(self):
-        self.engine = pyttsx3.init()
+        # initialize TTS engine with fallbacks
+        try:
+            # prefer sapi5 on Windows
+            if sys.platform.startswith("win"):
+                try:
+                    self.engine = pyttsx3.init(driverName="sapi5")
+                except Exception:
+                    self.engine = pyttsx3.init()
+            else:
+                self.engine = pyttsx3.init()
+            # configure defaults
+            try:
+                self.engine.setProperty("rate", 150)
+                self.engine.setProperty("volume", 1.0)
+            except Exception:
+                pass
+            self._tts_available = True
+        except Exception:
+            self.logger.exception("TTS engine initialization failed")
+            self.engine = None
+            self._tts_available = False
         self.joke_generator = JokeGenerator()
         self.fact_generator = FactGenerator()
         self.reminder_manager = ReminderManager()
@@ -123,6 +143,27 @@ class SpeechAssistant:
                     f.write("[]")
         except Exception:
             self.logger.exception("Failed to initialize notes file")
+        # reminders persistence file
+        self.reminders_file = os.path.join(os.path.dirname(__file__), "reminders.json")
+        try:
+            # load persisted reminders (list of dicts with fire_at and message)
+            if os.path.exists(self.reminders_file):
+                with open(self.reminders_file, "r", encoding="utf-8") as rf:
+                    data = json.load(rf)
+                    now = time.time()
+                    for item in data:
+                        try:
+                            fire_at = float(item.get("fire_at", now))
+                            msg = item.get("message", "Reminder")
+                            if fire_at > now:
+                                self.reminder_manager.reminders.append((fire_at, msg))
+                                # start thread for pending reminder
+                                t = threading.Thread(target=self.reminder_manager.remind, args=((fire_at-now)/60, msg), daemon=True)
+                                t.start()
+                        except Exception:
+                            continue
+        except Exception:
+            self.logger.exception("Failed to load reminders")
 
     def speak(self, text: str) -> None:
         # one-second delay before every assistant response
@@ -139,23 +180,45 @@ class SpeechAssistant:
         except Exception:
             self.logger.debug("Failed to write conversation log")
 
+        # Always print assistant output so the user sees responses even if TTS fails
+        try:
+            print(f"Assistant: {text}")
+        except Exception:
+            self.logger.info("Assistant (print) unavailable: %s", text)
+
         if not self.enable_tts:
-            # In non-TTS/text mode, print to stdout so the user sees responses
-            try:
-                print(f"Assistant: {text}")
-            except Exception:
-                # fallback to logger if stdout is unavailable
-                self.logger.info("TTS disabled, would say: %s", text)
             return
 
+        # Try pyttsx3 engine first (if available), otherwise fall back to PowerShell on Windows
         try:
             self._speaking.set()
-            self.engine.say(text)
-            self.engine.runAndWait()
+            if self._tts_available and self.engine is not None:
+                try:
+                    self.engine.say(text)
+                    self.engine.runAndWait()
+                except Exception:
+                    self.logger.exception("TTS engine failed; attempting fallback")
+                    # try fallback below
+                    self._powershell_tts(text)
+            else:
+                # fallback to PowerShell TTS on Windows
+                self._powershell_tts(text)
         finally:
             # give a short buffer to ensure microphone doesn't pick up the TTS
             time.sleep(0.25)
             self._speaking.clear()
+
+    def _powershell_tts(self, text: str) -> None:
+        # Best-effort fallback using Windows System.Speech via PowerShell
+        if not sys.platform.startswith("win"):
+            return
+        try:
+            # escape single quotes for PowerShell single-quoted string
+            esc = text.replace("'", "''")
+            cmd = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{esc}')"
+            subprocess.run(["powershell", "-NoProfile", "-Command", cmd], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            self.logger.exception("PowerShell TTS fallback failed")
 
     def listen(self) -> Optional[str]:
         recognizer = sr.Recognizer()
@@ -553,7 +616,7 @@ class SpeechAssistant:
     def set_reminder(self, duration: int, message: str) -> None:
         self.reminder_manager.add_reminder(duration, message)
 
-    def process_command(self, text: str) -> None:
+    def process_command(self, text: str) -> bool:
         if not text:
             return False
         print(f"User: {text}")
@@ -564,6 +627,90 @@ class SpeechAssistant:
         norm = text_lower.strip()
         if norm in self.aliases:
             text_lower = self.aliases[norm]
+
+        # simple slash commands for local control
+        if text_lower.startswith("/"):
+            if text_lower.startswith("/history"):
+                m = re.search(r"/history\s*(\d+)?", text_lower)
+                n = int(m.group(1)) if m and m.group(1) else 10
+                hist = self.conversation_history[-n:]
+                if not hist:
+                    self.speak("No conversation history.")
+                else:
+                    for line in hist:
+                        self.speak(line)
+                return False
+            if text_lower.startswith("/clear"):
+                self.conversation_history.clear()
+                self.last_response = None
+                self.speak("Conversation history cleared.")
+                return False
+            if text_lower.startswith("/help"):
+                self.speak("Slash commands available: /history [n], /clear, /help. Use voice commands as usual.")
+                return False
+            if text_lower.startswith("/export"):
+                # /export optionalfilename
+                parts = text.split(None, 1)
+                fname = parts[1].strip() if len(parts) > 1 else "conversation_export.txt"
+                try:
+                    with open(fname, "w", encoding="utf-8") as ef:
+                        ef.write("\n".join(self.conversation_history))
+                    self.speak(f"Conversation exported to {fname}")
+                except Exception:
+                    self.logger.exception("Failed to export conversation")
+                    self.speak("I couldn't export the conversation.")
+                return False
+            if text_lower.startswith("/tts-test"):
+                # short TTS sanity check
+                self.speak("This is a text to speech test. If you hear this, TTS is working.")
+                return False
+            if text_lower.startswith("/summary"):
+                # /summary [n]
+                m = re.search(r"/summary\s*(\d+)?", text_lower)
+                n = int(m.group(1)) if m and m.group(1) else 20
+                items = self.conversation_history[-n:]
+                if not items:
+                    self.speak("No conversation to summarize.")
+                    return False
+                # naive summary: return last N messages concatenated and shortened
+                joined = " ".join(items)
+                summary = joined[:1000]
+                if len(joined) > 1000:
+                    summary += "..."
+                self.speak("Here is a brief summary of recent conversation:")
+                self.speak(summary)
+                return False
+            if text_lower.startswith("/verbose"):
+                if "on" in text_lower or "true" in text_lower:
+                    self.logger.setLevel(logging.DEBUG)
+                    self.speak("Verbose logging enabled.")
+                elif "off" in text_lower or "false" in text_lower:
+                    self.logger.setLevel(logging.INFO)
+                    self.speak("Verbose logging disabled.")
+                else:
+                    self.speak("Use /verbose on or /verbose off.")
+                return False
+            if text_lower.startswith("/remind"):
+                # /remind 5 take out trash
+                m = re.match(r"/remind\s+(\d+)\s+(.+)", text_lower)
+                if m:
+                    minutes = int(m.group(1))
+                    msg = m.group(2).strip()
+                    self.reminder_manager.add_reminder(minutes, msg)
+                    # persist reminders
+                    try:
+                        cur = []
+                        now = time.time()
+                        for fire_at, message in self.reminder_manager.reminders:
+                            cur.append({"fire_at": fire_at, "message": message})
+                        with open(self.reminders_file, "w", encoding="utf-8") as rf:
+                            json.dump(cur, rf, ensure_ascii=False, indent=2)
+                    except Exception:
+                        self.logger.exception("Failed to persist reminders")
+                    self.speak(f"Reminder set for {minutes} minutes from now: {msg}")
+                else:
+                    self.speak("Usage: /remind <minutes> <message>")
+                return False
 
         if text_lower.strip() == "help":
             cmds = [
@@ -742,8 +889,7 @@ class SpeechAssistant:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Forte - a small speech assistant")
-    parser.add_argument("--text", action="store_true", help="Run in text/CLI mode (no microphone listening)")
-    parser.add_argument("--listen", action="store_true", help="Enable microphone listening mode")
+    parser.add_argument("--no-welcome", action="store_true", help="Do not play the welcome message on start")
     parser.add_argument("--allow-apps", action="store_true", help="Allow the assistant to open applications (opt-in)")
     parser.add_argument("--allow-volume", action="store_true", help="Allow the assistant to change system volume (opt-in)")
     parser.add_argument("--no-tts", action="store_true", help="Disable text-to-speech output")
@@ -758,28 +904,34 @@ def main() -> None:
 
     def listen_and_process():
         while True:
-            text = assistant.listen()
+            try:
+                text = assistant.listen()
+            except OSError as e:
+                # No microphone or audio device available; fallback to CLI input
+                assistant.speak("Microphone not available; switching to keyboard input.")
+                while True:
+                    try:
+                        text = input("> ")
+                    except (EOFError, KeyboardInterrupt):
+                        return
+                    if not text:
+                        continue
+                    if text.strip().lower() in ("exit", "quit", "goodbye"):
+                        assistant.speak("Goodbye!")
+                        return
+                    assistant.process_command(text)
+                
             if text:
                 should_exit = assistant.process_command(text)
                 if should_exit:
                     break
 
     try:
-        # Default to microphone listening unless --text is provided
-        if not args.text:
+        # Always run in listening mode by default. Use --no-welcome to silence greeting.
+        if not getattr(args, "no_welcome", False):
             assistant.speak("Hello! Say 'help' for commands.")
-            # run in main thread so TTS/speaking syncs with listening
-            listen_and_process()
-        else:
-            assistant.speak("Running in text mode. Type 'exit' to quit. Type 'help' for commands.")
-            while True:
-                text = input("> ")
-                if not text:
-                    continue
-                if text.strip().lower() in ("exit", "quit", "goodbye"):
-                    assistant.speak("Goodbye!")
-                    break
-                assistant.process_command(text)
+        # run in main thread so TTS/speaking syncs with listening
+        listen_and_process()
     except KeyboardInterrupt:
         logging.info("Exiting...")
         sys.exit(0)
