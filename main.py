@@ -751,18 +751,28 @@ class SpeechAssistant:
             self.speak("Asteroids are small rocky bodies that orbit the Sun. There are millions of them in space.")
         elif "what are asteroids" in text_lower:
             self.speak("Asteroids are small rocky bodies that orbit the Sun. There are millions of them in space.")
-                            elif "what is mercury" in text_lower:
-                                self.speak("Mercury is the closest planet to the Sun and the smallest planet in the solar system. It is about as wide as the Atlantic Ocean.")
-                            elif "what is venus" in text_lower:
-                                self.speak("Venus is the second planet from the Sun. Is is about the same size as Earth and it is made from similar materials.")
-                            elif "what is mars" in text_lower:
-                                self.speak("Mars is the fourth planet from the Sun. It is red and about half the size of the Earth.")
-                            elif "what is jupiter" in text_lower:
-                                self.speak("Jupiter is the fifth planet from the Sun. It is over a thousand times the size of Earth.")
-                            elif "what is saturn" in text_lower:
-                                self.speak("Saturn is the sixth planet from the Sun. It is surrounded by a system of rings that extend thousands of miles from the planet.")
-                            elif "what is uranus in text_lower:
-                                self.speak("Uranus is the seventh planet from the Sun. The methane in its atmosphere gives it a blue color.")
+        elif "what is mercury" in text_lower:
+            self.speak("Mercury is the closest planet to the Sun and the smallest planet in the solar system. It is about as wide as the Atlantic Ocean.")
+        elif "what is venus" in text_lower:
+           self.speak("Venus is the second planet from the Sun. Is is about the same size as Earth and it is made from similar materials.")
+        elif "what is mars" in text_lower:
+            self.speak("Mars is the fourth planet from the Sun. It is red and about half the size of the Earth.")
+        elif "what is jupiter" in text_lower:
+            self.speak("Jupiter is the fifth planet from the Sun. It is over a thousand times the size of Earth.")
+        elif "what is saturn" in text_lower:
+            self.speak("Saturn is the sixth planet from the Sun. It is surrounded by a system of rings that extend thousands of miles from the planet.")
+        elif "what is uranus in text_lower:
+            self.speak("Uranus is the seventh planet from the Sun. The methane in its atmosphere gives it a blue color.")
+        elif "what is neptune" in text_lower:
+            self.speak("Neptune is the farthest planet from the Sun. It is over 2 billion miles from the Sun and has the fastest winds in the solar system.")
+        elif "what shape has 3 sides" in text_lower:
+            self.speak("A triangle has 3 sides.")          
+        elif "what shape has three sides" in text_lower:
+            self.speak("A triangle has three sides.")    
+        elif "what shape has 3 angles" in text_lower:
+            self.speak("A triangle has 3 angles.")
+        elif "what shape has three angles" in text_lower:
+            self.speak("A triangle has three angles.")
         elif "goodbye" in text_lower:
             self.speak("Goodbye! Have a great day!")
             return True
