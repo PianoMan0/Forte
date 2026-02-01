@@ -2,6 +2,7 @@ import argparse
 import ast
 import operator as op
 import threading
+import queue
 import speech_recognition as sr
 from typing import List, Optional
 import pyttsx3
@@ -85,32 +86,54 @@ class ReminderManager:
 
 class SpeechAssistant:
     def __init__(self):
+        # logger first so any initialization failures can be recorded
+        self.logger = logging.getLogger("Forte")
         # initialize TTS engine with fallbacks
         try:
-            # prefer sapi5 on Windows
+            # Try to initialize multiple TTS backends and prefer SAPI on Windows
+            self.engine = None
+            self._sapi_voice = None
+            # try pyttsx3 first (cross-platform)
+            try:
+                self.engine = pyttsx3.init()
+                try:
+                    self.engine.setProperty("rate", 150)
+                    self.engine.setProperty("volume", 1.0)
+                except Exception:
+                    pass
+                try:
+                    self._voices = self.engine.getProperty("voices") or []
+                except Exception:
+                    self._voices = []
+            except Exception:
+                self.engine = None
+                self._voices = []
+
+            # On Windows prefer direct SAPI via comtypes if available (more reliable)
             if sys.platform.startswith("win"):
                 try:
-                    self.engine = pyttsx3.init(driverName="sapi5")
+                    from comtypes.client import CreateObject
+
+                    try:
+                        self._sapi_voice = CreateObject("SAPI.SpVoice")
+                    except Exception:
+                        self._sapi_voice = None
                 except Exception:
-                    self.engine = pyttsx3.init()
-            else:
-                self.engine = pyttsx3.init()
-            # configure defaults
-            try:
-                self.engine.setProperty("rate", 150)
-                self.engine.setProperty("volume", 1.0)
-            except Exception:
-                pass
-            self._tts_available = True
+                    self._sapi_voice = None
+
+            # tts considered available if either backend exists
+            self._tts_available = bool(self.engine or self._sapi_voice)
         except Exception:
             self.logger.exception("TTS engine initialization failed")
             self.engine = None
+            self._voices = []
+            self._sapi_voice = None
             self._tts_available = False
         self.joke_generator = JokeGenerator()
         self.fact_generator = FactGenerator()
         self.reminder_manager = ReminderManager()
         self.enable_tts = True
-        self.logger = logging.getLogger("Forte")
+        # `self.logger` already set above
         # speaking flag to avoid re-capturing TTS audio
         self._speaking = threading.Event()
         # conversation context
@@ -189,24 +212,107 @@ class SpeechAssistant:
         if not self.enable_tts:
             return
 
-        # Try pyttsx3 engine first (if available), otherwise fall back to PowerShell on Windows
+        # Try SAPI (Windows) first if available, then pyttsx3, then PowerShell.
         try:
             self._speaking.set()
-            if self._tts_available and self.engine is not None:
+            # primary: direct SAPI via comtypes (Windows)
+            if getattr(self, "_sapi_voice", None) is not None:
+                try:
+                    # comtypes SAPI object has Speak method
+                    self._sapi_voice.Speak(text)
+                    return
+                except Exception:
+                    self.logger.exception("SAPI (comtypes) TTS failed; falling back")
+
+            # secondary: pyttsx3
+            if self._tts_available and getattr(self, "engine", None) is not None:
                 try:
                     self.engine.say(text)
                     self.engine.runAndWait()
+                    return
                 except Exception:
-                    self.logger.exception("TTS engine failed; attempting fallback")
-                    # try fallback below
-                    self._powershell_tts(text)
-            else:
-                # fallback to PowerShell TTS on Windows
+                    self.logger.exception("pyttsx3 TTS engine failed; attempting PowerShell fallback")
+
+            # tertiary: PowerShell System.Speech fallback
+            try:
                 self._powershell_tts(text)
+            except Exception:
+                self.logger.exception("PowerShell TTS fallback failed")
         finally:
             # give a short buffer to ensure microphone doesn't pick up the TTS
             time.sleep(0.25)
             self._speaking.clear()
+
+    def list_voices(self) -> List[str]:
+        out = []
+        try:
+            if getattr(self, "_voices", None):
+                for i, v in enumerate(self._voices):
+                    name = getattr(v, 'name', None) or getattr(v, 'id', '')
+                    out.append(f"{i}: {name}")
+            elif getattr(self, "_sapi_voice", None) is not None:
+                try:
+                    vs = self._sapi_voice.GetVoices()
+                    count = int(getattr(vs, 'Count', 0))
+                    for i in range(count):
+                        try:
+                            token = vs.Item(i)
+                            # token may have GetDescription method
+                            name = ""
+                            try:
+                                name = token.GetDescription()
+                            except Exception:
+                                try:
+                                    name = str(token)
+                                except Exception:
+                                    name = f"voice_{i}"
+                            out.append(f"{i}: {name}")
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+        except Exception:
+            self.logger.exception("Failed to list voices")
+        return out
+
+    def set_voice(self, index: int) -> str:
+        try:
+            # Prefer pyttsx3 voices if available
+            if getattr(self, "engine", None) and getattr(self, "_voices", None):
+                if index < 0 or index >= len(self._voices):
+                    return f"Voice index out of range (0..{len(self._voices)-1})."
+                self.engine.setProperty('voice', self._voices[index].id)
+                return f"Voice set to {getattr(self._voices[index], 'name', self._voices[index].id)}"
+
+            # Fallback to SAPI voices on Windows
+            sapi = getattr(self, "_sapi_voice", None)
+            if sapi is not None:
+                vs = sapi.GetVoices()
+                count = int(getattr(vs, 'Count', 0))
+                if index < 0 or index >= count:
+                    return f"Voice index out of range (0..{max(0,count-1)})."
+                token = vs.Item(index)
+                # try setting voice via property or method
+                try:
+                    sapi.Voice = token
+                except Exception:
+                    try:
+                        sapi.SetVoice(token)
+                    except Exception:
+                        pass
+                try:
+                    name = token.GetDescription()
+                except Exception:
+                    try:
+                        name = str(token)
+                    except Exception:
+                        name = f"voice_{index}"
+                return f"Voice set to {name}"
+
+            return "No TTS voices available."
+        except Exception:
+            self.logger.exception("Failed to set voice")
+            return "Failed to set voice."
 
     def _powershell_tts(self, text: str) -> None:
         # Best-effort fallback using Windows System.Speech via PowerShell
@@ -660,7 +766,54 @@ class SpeechAssistant:
                     self.logger.exception("Failed to export conversation")
                     self.speak("I couldn't export the conversation.")
                 return False
-            if text_lower.startswith("/tts-test"):
+            if text_lower.startswith("/voices"):
+                vlist = self.list_voices()
+                if not vlist:
+                    self.speak("No voices available.")
+                else:
+                    for v in vlist:
+                        self.speak(v)
+                return False
+            if text_lower.startswith("/set-voice") or text_lower.startswith("set-voice"):
+                parts = text.split(None, 1)
+                if len(parts) < 2:
+                    self.speak("Usage: /set-voice <index>")
+                    return False
+                try:
+                    idx = int(parts[1].strip())
+                    res = self.set_voice(idx)
+                    self.speak(res)
+                except Exception:
+                    self.speak("Invalid voice index")
+                return False
+            if text_lower.startswith("/set-rate") or text_lower.startswith("set-rate"):
+                parts = text.split(None, 1)
+                if len(parts) < 2:
+                    self.speak("Usage: /set-rate <number>")
+                    return False
+                try:
+                    rate = int(parts[1].strip())
+                    if self.engine:
+                        self.engine.setProperty('rate', rate)
+                        self.speak(f"Speech rate set to {rate}")
+                    else:
+                        self.speak("TTS engine not available.")
+                except Exception:
+                    self.speak("Invalid rate value")
+                return False
+            if text_lower.startswith("/tts"):
+                # /tts on|off
+                if "on" in text_lower or "true" in text_lower:
+                    self.enable_tts = True
+                    self.speak("Text to speech enabled.")
+                elif "off" in text_lower or "false" in text_lower:
+                    # say confirmation before disabling
+                    self.speak("Text to speech disabled.")
+                    self.enable_tts = False
+                else:
+                    self.speak("Usage: /tts on or /tts off")
+                return False
+            if text_lower.startswith("test"):
                 # short TTS sanity check
                 self.speak("This is a text to speech test. If you hear this, TTS is working.")
                 return False
@@ -751,18 +904,18 @@ class SpeechAssistant:
             self.speak("Asteroids are small rocky bodies that orbit the Sun. There are millions of them in space.")
         elif "what are asteroids" in text_lower:
             self.speak("Asteroids are small rocky bodies that orbit the Sun. There are millions of them in space.")
-                            elif "what is mercury" in text_lower:
-                                self.speak("Mercury is the closest planet to the Sun and the smallest planet in the solar system. It is about as wide as the Atlantic Ocean.")
-                            elif "what is venus" in text_lower:
-                                self.speak("Venus is the second planet from the Sun. Is is about the same size as Earth and it is made from similar materials.")
-                            elif "what is mars" in text_lower:
-                                self.speak("Mars is the fourth planet from the Sun. It is red and about half the size of the Earth.")
-                            elif "what is jupiter" in text_lower:
-                                self.speak("Jupiter is the fifth planet from the Sun. It is over a thousand times the size of Earth.")
-                            elif "what is saturn" in text_lower:
-                                self.speak("Saturn is the sixth planet from the Sun. It is surrounded by a system of rings that extend thousands of miles from the planet.")
-                            elif "what is uranus in text_lower:
-                                self.speak("Uranus is the seventh planet from the Sun. The methane in its atmosphere gives it a blue color.")
+        elif "what is mercury" in text_lower:
+            self.speak("Mercury is the closest planet to the Sun and the smallest planet in the solar system. It is about as wide as the Atlantic Ocean.")
+        elif "what is venus" in text_lower:
+            self.speak("Venus is the second planet from the Sun. Is is about the same size as Earth and it is made from similar materials.")
+        elif "what is mars" in text_lower:
+            self.speak("Mars is the fourth planet from the Sun. It is red and about half the size of the Earth.")
+        elif "what is jupiter" in text_lower:
+            self.speak("Jupiter is the fifth planet from the Sun. It is over a thousand times the size of Earth.")
+        elif "what is saturn" in text_lower:
+            self.speak("Saturn is the sixth planet from the Sun. It is surrounded by a system of rings that extend thousands of miles from the planet.")
+        elif "what is uranus" in text_lower:
+            self.speak("Uranus is the seventh planet from the Sun. The methane in its atmosphere gives it a blue color.")
         elif "goodbye" in text_lower:
             self.speak("Goodbye! Have a great day!")
             return True
@@ -919,28 +1072,71 @@ def main() -> None:
         assistant.enable_tts = False
 
     def listen_and_process():
-        while True:
+        # Use a queue to accept both microphone and keyboard inputs concurrently.
+        q: "queue.Queue[str]" = queue.Queue()
+        running = threading.Event()
+        running.set()
+
+        def mic_worker():
+            # Continuously listen via microphone and enqueue results.
             try:
-                text = assistant.listen()
-            except OSError as e:
-                # No microphone or audio device available; fallback to CLI input
-                assistant.speak("Microphone not available; switching to keyboard input.")
-                while True:
+                while running.is_set():
+                    try:
+                        text = assistant.listen()
+                    except OSError:
+                        # Microphone unavailable; stop mic worker and inform user.
+                        assistant.speak("Microphone not available; you can type commands instead.")
+                        break
+                    if text:
+                        q.put(text)
+            except Exception:
+                assistant.logger.exception("microphone worker crashed")
+
+        def keyboard_worker():
+            # Read blocking keyboard input in separate thread so main loop remains responsive.
+            try:
+                while running.is_set():
                     try:
                         text = input("> ")
                     except (EOFError, KeyboardInterrupt):
-                        return
+                        # Signal shutdown
+                        running.clear()
+                        q.put("__EXIT__")
+                        break
                     if not text:
                         continue
-                    if text.strip().lower() in ("exit", "quit", "goodbye"):
-                        assistant.speak("Goodbye!")
-                        return
-                    assistant.process_command(text)
-                
-            if text:
+                    q.put(text)
+            except Exception:
+                assistant.logger.exception("keyboard worker crashed")
+
+        mic_t = threading.Thread(target=mic_worker, daemon=True)
+        key_t = threading.Thread(target=keyboard_worker, daemon=True)
+        mic_t.start()
+        key_t.start()
+
+        try:
+            while running.is_set():
+                try:
+                    item = q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if item is None:
+                    continue
+                if item == "__EXIT__":
+                    assistant.speak("Goodbye!")
+                    break
+                text = item
                 should_exit = assistant.process_command(text)
                 if should_exit:
+                    running.clear()
                     break
+        finally:
+            running.clear()
+            try:
+                mic_t.join(timeout=0.5)
+                # keyboard thread may be blocked on input(); we won't force-join it
+            except Exception:
+                pass
 
     try:
         # Always run in listening mode by default. Use --no-welcome to silence greeting.
