@@ -916,6 +916,12 @@ class SpeechAssistant:
             self.speak("Saturn is the sixth planet from the Sun. It is surrounded by a system of rings that extend thousands of miles from the planet.")
         elif "what is uranus" in text_lower:
             self.speak("Uranus is the seventh planet from the Sun. The methane in its atmosphere gives it a blue color.")
+        elif "when is christmas" in text_lower:
+            self.speak("Christmas is on December 25.")
+        elif "when is valentines day" in text_lower:
+            self.speak("Valentines Day is on February 14.")
+        elif "when is halloween" in text_lower:
+            self.speak("Halloween is on October 31.")
         elif "goodbye" in text_lower:
             self.speak("Goodbye! Have a great day!")
             return True
