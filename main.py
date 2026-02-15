@@ -1096,7 +1096,6 @@ def main() -> None:
                     try:
                         text = input("> ")
                     except (EOFError, KeyboardInterrupt):
-                        # Signal shutdown
                         running.clear()
                         q.put("__EXIT__")
                         break
