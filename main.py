@@ -890,6 +890,8 @@ class SpeechAssistant:
             self.speak("You're welcome!")
         elif "six seven" in text_lower:
             self.speak("Six seven!")
+        elif "67" in text_lower:
+            self.speak("Six seven!")
         elif "will you be my friend" in text_lower:
             self.speak("Of course!")
         elif "want to be friends" in text_lower:
