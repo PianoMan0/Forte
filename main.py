@@ -26,7 +26,6 @@ except Exception:
 
 class JokeGenerator:
     def __init__(self):
-        # support categories for more interesting jokes
         self.jokes = {
             "general": [
                 "Why don't programmers like nature? It has too many bugs.",
@@ -140,13 +139,11 @@ class SpeechAssistant:
         self.last_user_message: Optional[str] = None
         self.last_response: Optional[str] = None
         self.conversation_history: List[str] = []
-        # Default coordinates:
         self.default_lat = 39.6374
         self.default_lon = -75.6001
         # Safety flags -- default to unsafe actions disabled
         self.allow_apps = False
         self.allow_volume = False
-        # simple alias mapping for common short phrases
         self.aliases = {
             "hi": "hello",
             "hey": "hello",
@@ -189,12 +186,12 @@ class SpeechAssistant:
             self.logger.exception("Failed to load reminders")
 
     def speak(self, text: str) -> None:
-        # one-second delay before every assistant response
+        # one second delay before every assistant response
         try:
             time.sleep(1)
         except Exception:
             pass
-        # Always record the last response and history so text-mode still works
+        # Always record the last response and history so text mode still works
         self.last_response = text
         self.conversation_history.append(f"Assistant: {text}")
         try:
@@ -212,7 +209,7 @@ class SpeechAssistant:
         if not self.enable_tts:
             return
 
-        # Try SAPI (Windows) first if available, then pyttsx3, then PowerShell.
+        # Try SAPI (Windows) first if available, then pyttsx3, then PowerShell
         try:
             self._speaking.set()
             # primary: direct SAPI via comtypes (Windows)
@@ -239,7 +236,7 @@ class SpeechAssistant:
             except Exception:
                 self.logger.exception("PowerShell TTS fallback failed")
         finally:
-            # give a short buffer to ensure microphone doesn't pick up the TTS
+            # give a short buffer to ensure microphone doesn't pick up the TTS :sob:
             time.sleep(0.25)
             self._speaking.clear()
 
@@ -257,7 +254,6 @@ class SpeechAssistant:
                     for i in range(count):
                         try:
                             token = vs.Item(i)
-                            # token may have GetDescription method
                             name = ""
                             try:
                                 name = token.GetDescription()
@@ -292,7 +288,6 @@ class SpeechAssistant:
                 if index < 0 or index >= count:
                     return f"Voice index out of range (0..{max(0,count-1)})."
                 token = vs.Item(index)
-                # try setting voice via property or method
                 try:
                     sapi.Voice = token
                 except Exception:
@@ -452,7 +447,6 @@ class SpeechAssistant:
             return "Sorry, I couldn't fetch the weather."
 
     def set_timer(self, seconds: int, message: str = "Timer complete") -> None:
-        # Prevent too many timers from being created
         with self._timer_lock:
             if self._timer_count >= self.max_timers:
                 self.speak("Too many timers running; please wait before adding another.")
@@ -583,7 +577,6 @@ class SpeechAssistant:
                     headlines.append((title, link))
             if not headlines:
                 return "No news items found."
-            # speak headlines
             self.speak("Here are the top headlines:")
             for title, link in headlines:
                 self.speak(title)
@@ -734,7 +727,7 @@ class SpeechAssistant:
         if norm in self.aliases:
             text_lower = self.aliases[norm]
 
-        # simple slash commands for local control
+        # slash commands
         if text_lower.startswith("/"):
             if text_lower.startswith("/history"):
                 m = re.search(r"/history\s*(\d+)?", text_lower)
@@ -755,7 +748,6 @@ class SpeechAssistant:
                 self.speak("Slash commands available: /history [n], /clear, /help. Use voice commands as usual.")
                 return False
             if text_lower.startswith("/export"):
-                # /export optionalfilename
                 parts = text.split(None, 1)
                 fname = parts[1].strip() if len(parts) > 1 else "conversation_export.txt"
                 try:
@@ -814,7 +806,6 @@ class SpeechAssistant:
                     self.speak("Usage: /tts on or /tts off")
                 return False
             if text_lower.startswith("test"):
-                # short TTS sanity check
                 self.speak("This is a text to speech test. If you hear this, TTS is working.")
                 return False
             if text_lower.startswith("/summary"):
@@ -844,13 +835,12 @@ class SpeechAssistant:
                     self.speak("Use /verbose on or /verbose off.")
                 return False
             if text_lower.startswith("/remind"):
-                # /remind 5 take out trash
+                # /remind 5 commit arson
                 m = re.match(r"/remind\s+(\d+)\s+(.+)", text_lower)
                 if m:
                     minutes = int(m.group(1))
                     msg = m.group(2).strip()
                     self.reminder_manager.add_reminder(minutes, msg)
-                    # persist reminders
                     try:
                         cur = []
                         now = time.time()
@@ -1036,7 +1026,6 @@ class SpeechAssistant:
             else:
                 self.speak("Please say 'traffic from <origin> to <destination>'.")
         elif text_lower.startswith("take note") or text_lower.startswith("save note") or text_lower.startswith("note:"):
-            # capture note text
             m = re.search(r"(?:take note|save note|note:)\s*(.+)", text, re.I)
             if m:
                 note_text = m.group(1).strip()
