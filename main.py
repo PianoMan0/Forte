@@ -1,3 +1,8 @@
+# Heyo, thanks for reading my code! 
+# This is all open source and free to use, and I've added comments throughout to explain how it works. 
+# If you have any questions or want to contribute, feel free to reach out or submit a pull request.
+# - PianoMan0
+
 import argparse
 import ast
 import operator as op
