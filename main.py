@@ -8,7 +8,10 @@ import ast
 import operator as op
 import threading
 import queue
-import speech_recognition as sr
+try:
+    import speech_recognition as sr
+except Exception:
+    sr = None
 from typing import List, Optional
 import pyttsx3
 import time
@@ -159,17 +162,35 @@ class SpeechAssistant:
         self.max_timers = 5
         self._timer_count = 0
         self._timer_lock = threading.Lock()
-        # Notes storage
-        self.notes_file = os.path.join(os.path.dirname(__file__), "notes.json")
-        self.conversation_log = os.path.join(os.path.dirname(__file__), "conversation.log")
+        # Notes, logs, and reminders should be stored in a writable directory.
+        # When frozen, prefer the executable directory; otherwise use the source dir.
+        try:
+            if getattr(sys, "frozen", False):
+                data_dir = os.path.dirname(sys.executable) or os.getcwd()
+            else:
+                data_dir = os.path.dirname(__file__) or os.getcwd()
+            # If the chosen data_dir is not a real directory (e.g., inside a zip),
+            # fall back to the current working directory.
+            if not os.path.isdir(data_dir):
+                data_dir = os.getcwd()
+            try:
+                os.makedirs(data_dir, exist_ok=True)
+            except Exception:
+                data_dir = os.getcwd()
+        except Exception:
+            data_dir = os.getcwd()
+
+        self.notes_file = os.path.join(data_dir, "notes.json")
+        self.conversation_log = os.path.join(data_dir, "conversation.log")
         try:
             if not os.path.exists(self.notes_file):
                 with open(self.notes_file, "w", encoding="utf-8") as f:
                     f.write("[]")
         except Exception:
             self.logger.exception("Failed to initialize notes file")
+
         # reminders persistence file
-        self.reminders_file = os.path.join(os.path.dirname(__file__), "reminders.json")
+        self.reminders_file = os.path.join(data_dir, "reminders.json")
         try:
             # load persisted reminders (list of dicts with fire_at and message)
             if os.path.exists(self.reminders_file):
@@ -327,6 +348,13 @@ class SpeechAssistant:
             self.logger.exception("PowerShell TTS fallback failed")
 
     def listen(self) -> Optional[str]:
+        if sr is None:
+            try:
+                self.speak("Speech recognition library not available; you can type commands instead.")
+            except Exception:
+                pass
+            return None
+
         recognizer = sr.Recognizer()
         with sr.Microphone() as source:
             # wait if we're speaking to avoid feedback
