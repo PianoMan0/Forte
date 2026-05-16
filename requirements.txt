@@ -1,7 +1,8 @@
 ﻿SpeechRecognition
 pyttsx3
 wikipedia
-pyaudio
+PyAudio
 requests
 googletrans==4.0.0-rc1
 comtypes
+pycaw 

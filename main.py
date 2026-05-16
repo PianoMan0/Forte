@@ -10,7 +10,7 @@ import threading
 import queue
 try:
     import speech_recognition as sr
-except Exception:
+except ImportError:
     sr = None
 from typing import List, Optional
 import pyttsx3
@@ -211,6 +211,28 @@ class SpeechAssistant:
         except Exception:
             self.logger.exception("Failed to load reminders")
 
+        # Detect whether microphone backend (PyAudio) is available so we
+        # can avoid crashes when speech_recognition is present but PyAudio
+        # is not installed. Set a flag the main loop can check.
+        self._mic_available = False
+        try:
+            if sr is not None:
+                # Try briefly opening the microphone to detect PyAudio.
+                try:
+                    with sr.Microphone() as _src:
+                        pass
+                    self._mic_available = True
+                except Exception as e:
+                    self.logger.warning("Microphone unavailable or PyAudio missing: %s", e)
+                    self._mic_available = False
+            else:
+                self._mic_available = False
+        except Exception:
+            # Be conservative: if any unexpected error occurs, mark mic as
+            # unavailable so the worker won't be started.
+            self.logger.exception("Error while checking microphone availability")
+            self._mic_available = False
+
     def speak(self, text: str) -> None:
         # one second delay before every assistant response
         try:
@@ -351,6 +373,15 @@ class SpeechAssistant:
         if sr is None:
             try:
                 self.speak("Speech recognition library not available; you can type commands instead.")
+            except Exception:
+                pass
+            return None
+
+        # If the speech_recognition package is present but PyAudio (or another
+        # microphone backend) is missing, avoid attempting to open the mic.
+        if not getattr(self, "_mic_available", False):
+            try:
+                self.speak("Microphone not available or PyAudio missing; you can type commands instead.")
             except Exception:
                 pass
             return None
@@ -1138,10 +1169,20 @@ def main() -> None:
             except Exception:
                 assistant.logger.exception("keyboard worker crashed")
 
-        mic_t = threading.Thread(target=mic_worker, daemon=True)
+        mic_t = None
         key_t = threading.Thread(target=keyboard_worker, daemon=True)
-        mic_t.start()
         key_t.start()
+        # Only start the microphone worker if the assistant detected a usable
+        # microphone backend during initialization. This prevents crashes when
+        # speech_recognition is present but PyAudio is missing.
+        if getattr(assistant, "_mic_available", False):
+            mic_t = threading.Thread(target=mic_worker, daemon=True)
+            mic_t.start()
+        else:
+            try:
+                assistant.speak("Microphone not available; you can type commands instead.")
+            except Exception:
+                pass
 
         try:
             while running.is_set():
@@ -1162,7 +1203,8 @@ def main() -> None:
         finally:
             running.clear()
             try:
-                mic_t.join(timeout=0.5)
+                if mic_t:
+                    mic_t.join(timeout=0.5)
                 # keyboard thread may be blocked on input(); we won't force-join it
             except Exception:
                 pass
